@@ -1,0 +1,10 @@
+This directory bundles source from the MAME project (https://www.mamedev.org/),
+copyright Aaron Giles and the MAME team, used under the BSD-3-Clause license.
+
+  Full license text ........ ../../LICENSES/BSD-3-Clause.txt
+  What is bundled, what was
+  modified, content hashes .. ../../THIRD-PARTY.md
+
+The Pinball-2000-specific harness in this directory (emu_shim.h, dcs2_p2k.cpp/.h,
+dcs2_export.cpp, dcs2_extract.cpp, flac_encode.cpp/.h) is original to this
+project and likewise BSD-3-Clause. Everything outside vendor/ is MIT (../../LICENSE).

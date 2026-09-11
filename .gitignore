@@ -1,0 +1,13 @@
+# build artifacts
+/build/
+/marsminer
+*.o
+
+# what a run writes (never commit extracted assets — see README, "ROMs and what
+# this tool produces"): the asset tree, its container, and the intermediates
+/assets/
+/assets.zip
+/work/
+
+# your own ROM dumps, if you keep them here (the tests look for ./roms)
+/roms/

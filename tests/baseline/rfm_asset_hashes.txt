@@ -1,0 +1,24 @@
+# rfm_asset_hashes.txt — whole-stage content hashes of the extracted assets.
+#
+# The regression net for the image/font/table decoders, which no unit test covers:
+# tests/golden.sh re-extracts and compares against these. Each hash is md5 over every
+# file in that stage directory, concatenated in LC_ALL=C sorted path order.
+#
+# ==> SPECIFIC TO ONE GAME AND ONE ROM VERSION <==
+#
+#   game        Williams "Revenge from Mars" (Pinball 2000)
+#   version     1.80  (update bundle pin2000_50070_0180)
+#   chips       roms/chips (rfm_u100..u107 for the image banks)
+#
+# golden.sh verifies game.rom.md5 before comparing, so this can never silently
+# validate a different ROM version. A different version gets its own baseline file.
+#
+# NOT covered here: the sounds stage. Decoding the full DCS play set takes far too
+# long for a regression run, and its correctness has its own guards — dcs2_test
+# proves the board boots, the flash/sample spectral-flatness probe refuses a
+# mismatched ROM set, and used_ids_test pins which ids get decoded at all.
+#
+game.rom.md5 5753f50dc110103b08a3d4a5d45c37b7
+images       c6b78ed32486397c2743f217fa22d9ba
+fonts        e3037fbd22ecf515b4a53472a43c8cea
+tables       ed637b7b16de2f4995159732aa44618c
