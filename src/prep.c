@@ -13,46 +13,180 @@
 
 /* ---- helpers ------------------------------------------------------------ */
 
-/* Find "<roms>/<game>_u<chip>.{rom,bin}" (loader tries .rom then .bin). */
-static int find_chip(const char *roms, const char *game, const char *chip, char *out,
-                     size_t outsz) {
-    const char *sufs[] = {".rom", ".bin"};
-    for (int i = 0; i < 2; i++) {
-        snprintf(out, outsz, "%s/%s_u%s%s", roms, game, chip, sufs[i]);
-        if (mm_path_exists(out))
-            return 1;
+/* ---- chip files ---------------------------------------------------------
+ * Chip dumps arrive named two ways. The ROM sets this tool grew up on use
+ * "<prefix>_uNNN.{rom,bin}" (rfm_u109.bin); a chip reader writes the bare
+ * "UNNN.ROM" — no prefix at all, upper case. Both resolve here: the directory is
+ * read once and every entry matched against
+ *
+ *     [<prefix>_] u <NNN> .{rom|bin}        letter and extension case-insensitive
+ *
+ * so neither form has to be renamed or symlinked to be read. The digits must be
+ * exactly the three of the chip number, which is what keeps variant dumps
+ * (rfm_u100r2.rom) out without a special case for them.
+ */
+#define CHIP_LO 100
+#define CHIP_HI 110
+#define CHIP_N (CHIP_HI - CHIP_LO + 1)
+
+typedef struct {
+    char path[CHIP_N][1024]; /* resolved file per chip; "" where that chip is absent */
+    char prefix[64];         /* the prefix this dump uses; "" when the names are bare */
+    int found;               /* how many chips resolved */
+} mm_chipset;
+
+/* ASCII case-insensitive compare (the C library's is behind a feature-test macro). */
+static int ci_eq(const char *a, const char *b) {
+    for (; *a && *b; a++, b++) {
+        char x = *a, y = *b;
+        if (x >= 'A' && x <= 'Z')
+            x += 32;
+        if (y >= 'A' && y <= 'Z')
+            y += 32;
+        if (x != y)
+            return 0;
     }
-    return 0;
+    return !*a && !*b;
 }
 
-/* The chip dumps are named <prefix>_uNNN.{rom,bin}, and the prefix is the game's short name
-   ("rfm_u109.bin"). Rather than hard-code one title, look at what is actually in the directory:
-   take the prefix from the first *_u1NN.{rom,bin} we find. --chip-prefix overrides. */
-static const char *chip_prefix(const mm_opts *o, char *buf, size_t bufsz) {
-    if (o->chip_prefix && o->chip_prefix[0])
-        return o->chip_prefix;
-    DIR *d = o->roms_dir ? opendir(o->roms_dir) : NULL;
+/* Does `name` name a chip dump? Returns the chip number and fills `pfx` with the file's own
+   prefix ("" for the bare form) and `rank` with an extension preference (.rom before .bin,
+   as the old loader had it). -1 for anything that is not a chip file. */
+static int chip_of_name(const char *name, char *pfx, size_t pfxsz, int *rank) {
+    const char *dot = strrchr(name, '.');
+    if (!dot)
+        return -1;
+    if (ci_eq(dot, ".rom"))
+        *rank = 0;
+    else if (ci_eq(dot, ".bin"))
+        *rank = 1;
+    else
+        return -1;
+
+    const char *d = dot;
+    int ndig = 0;
+    while (d > name && d[-1] >= '0' && d[-1] <= '9') {
+        d--;
+        ndig++;
+    }
+    if (ndig != 3)
+        return -1;
+    if (d == name || (d[-1] != 'u' && d[-1] != 'U'))
+        return -1;
+
+    const char *u = d - 1;
+    size_t plen = (size_t)(u - name);
+    if (plen) { /* prefixed form — the separator must be '_', with something before it */
+        if (plen < 2 || u[-1] != '_')
+            return -1;
+        plen--; /* drop the '_' itself */
+        if (plen >= pfxsz)
+            return -1;
+        memcpy(pfx, name, plen);
+        pfx[plen] = '\0';
+    } else {
+        pfx[0] = '\0';
+    }
+    int n = (d[0] - '0') * 100 + (d[1] - '0') * 10 + (d[2] - '0');
+    return (n >= CHIP_LO && n <= CHIP_HI) ? n : -1;
+}
+
+struct chipent {
+    char prefix[64], path[1024];
+    int chip, rank;
+};
+
+/* Resolve the chip set in `roms_dir`. `want` pins the prefix (--chip-prefix; NULL or "" =
+   work it out from the files). A directory holding more than one set is decided by
+   completeness and the alternatives are named in a warning — never a silent readdir-order
+   coin flip, which is what choosing "the first match" used to be. */
+static void chipset_scan(const char *roms_dir, const char *want, mm_chipset *cs) {
+    memset(cs, 0, sizeof *cs);
+    DIR *d = roms_dir ? opendir(roms_dir) : NULL;
     if (!d)
-        return "rfm";
+        return;
+
+    struct chipent *es = NULL;
+    size_t n = 0, cap = 0;
     struct dirent *e;
-    const char *found = NULL;
-    while (!found && (e = readdir(d))) {
-        const char *u = strstr(e->d_name, "_u1");
-        size_t nl = strlen(e->d_name);
-        if (!u || u == e->d_name || nl < 8)
+    while ((e = readdir(d))) {
+        char pfx[64];
+        int rank = 0;
+        int chip = chip_of_name(e->d_name, pfx, sizeof pfx, &rank);
+        if (chip < 0)
             continue;
-        const char *dot = strrchr(e->d_name, '.');
-        if (!dot || (strcmp(dot, ".rom") != 0 && strcmp(dot, ".bin") != 0))
+        if (want && want[0] && !ci_eq(pfx, want))
             continue;
-        size_t pl = (size_t)(u - e->d_name);
-        if (pl + 1 > bufsz)
-            continue;
-        memcpy(buf, e->d_name, pl);
-        buf[pl] = '\0';
-        found = buf;
+        if (n == cap) {
+            size_t ncap = cap ? cap * 2 : 32;
+            struct chipent *ne = (struct chipent *)realloc(es, ncap * sizeof *ne);
+            if (!ne)
+                break;
+            es = ne;
+            cap = ncap;
+        }
+        snprintf(es[n].prefix, sizeof es[n].prefix, "%s", pfx);
+        snprintf(es[n].path, sizeof es[n].path, "%s/%s", roms_dir, e->d_name);
+        es[n].chip = chip;
+        es[n].rank = rank;
+        n++;
     }
     closedir(d);
-    return found ? found : "rfm";
+    if (!n) {
+        free(es);
+        return;
+    }
+
+    /* Which prefix? The pinned one, else the set covering the most chips (ties go to the
+       lexicographically first, so the answer does not depend on directory order). */
+    char chosen[64] = "";
+    if (want && want[0]) {
+        snprintf(chosen, sizeof chosen, "%s", want);
+    } else {
+        int best = -1, nsets = 0;
+        for (size_t i = 0; i < n; i++) {
+            int seen = 0;
+            for (size_t j = 0; j < i; j++)
+                if (ci_eq(es[j].prefix, es[i].prefix)) {
+                    seen = 1;
+                    break;
+                }
+            if (seen)
+                continue;
+            nsets++;
+            unsigned mask = 0;
+            for (size_t j = 0; j < n; j++)
+                if (ci_eq(es[j].prefix, es[i].prefix))
+                    mask |= 1u << (es[j].chip - CHIP_LO);
+            int cnt = 0;
+            for (int b = 0; b < CHIP_N; b++)
+                cnt += (mask >> b) & 1u;
+            if (cnt > best || (cnt == best && strcmp(es[i].prefix, chosen) < 0)) {
+                best = cnt;
+                snprintf(chosen, sizeof chosen, "%s", es[i].prefix);
+            }
+        }
+        if (nsets > 1)
+            mm_warn("%s holds %d chip sets — using \"%s\"; pass --chip-prefix to pick another",
+                    roms_dir, nsets, chosen[0] ? chosen : "(no prefix)");
+    }
+
+    int rank[CHIP_N];
+    for (int i = 0; i < CHIP_N; i++)
+        rank[i] = 99;
+    for (size_t i = 0; i < n; i++) {
+        if (!ci_eq(es[i].prefix, chosen))
+            continue;
+        int k = es[i].chip - CHIP_LO;
+        if (es[i].rank >= rank[k])
+            continue;
+        if (!cs->path[k][0])
+            cs->found++;
+        rank[k] = es[i].rank;
+        snprintf(cs->path[k], sizeof cs->path[k], "%s", es[i].path);
+    }
+    snprintf(cs->prefix, sizeof cs->prefix, "%s", chosen);
+    free(es);
 }
 
 /* Find the first file in `dir` whose name ends with `suffix`. */
@@ -99,27 +233,38 @@ static uint8_t *interleave16(const mm_buf *a, const mm_buf *b, size_t bank_size)
 /* ---- deinterleave (image banks only; DCS uses raw u109/u110 directly) ---- */
 
 struct bankdef {
-    const char *name, *a, *b;
+    const char *name;
+    int a, b;
     size_t size;
 };
 
 int mm_deinterleave(const char *roms_dir, const char *out_dir, const char *prefix, int verbose) {
     static const struct bankdef BANKS[] = {
-        {"bank0", "100", "101", 16u * 1024 * 1024},
-        {"bank1", "102", "103", 16u * 1024 * 1024},
-        {"bank2", "104", "105", 16u * 1024 * 1024},
-        {"bank3", "106", "107", 16u * 1024 * 1024},
+        {"bank0", 100, 101, 16u * 1024 * 1024},
+        {"bank1", 102, 103, 16u * 1024 * 1024},
+        {"bank2", 104, 105, 16u * 1024 * 1024},
+        {"bank3", 106, 107, 16u * 1024 * 1024},
     };
     if (mm_mkdir_p(out_dir) != 0) {
         mm_warn("cannot create %s", out_dir);
         return -1;
     }
+    mm_chipset cs;
+    chipset_scan(roms_dir, prefix, &cs);
+    if (!cs.found) {
+        mm_warn("no chip dumps in %s — expected <prefix>_uNNN.{rom,bin} or uNNN.{rom,bin}",
+                roms_dir);
+        return 0;
+    }
+    if (verbose)
+        mm_log(1, "chip set: %d file(s), prefix \"%s\"", cs.found,
+               cs.prefix[0] ? cs.prefix : "(none)");
+
     int built = 0;
     for (size_t i = 0; i < sizeof BANKS / sizeof BANKS[0]; i++) {
-        char pa[1024], pb[1024];
-        if (!find_chip(roms_dir, prefix, BANKS[i].a, pa, sizeof pa) ||
-            !find_chip(roms_dir, prefix, BANKS[i].b, pb, sizeof pb)) {
-            mm_warn("[%s] chips u%s/u%s not found — skipping", BANKS[i].name, BANKS[i].a,
+        const char *pa = cs.path[BANKS[i].a - CHIP_LO], *pb = cs.path[BANKS[i].b - CHIP_LO];
+        if (!pa[0] || !pb[0]) {
+            mm_warn("[%s] chips u%d/u%d not found — skipping", BANKS[i].name, BANKS[i].a,
                     BANKS[i].b);
             continue;
         }
@@ -144,7 +289,7 @@ int mm_deinterleave(const char *roms_dir, const char *out_dir, const char *prefi
         }
         built++;
         if (verbose)
-            mm_log(1, "[%s] u%s+u%s -> %s (%zu MiB)", BANKS[i].name, BANKS[i].a, BANKS[i].b, outp,
+            mm_log(1, "[%s] u%d+u%d -> %s (%zu MiB)", BANKS[i].name, BANKS[i].a, BANKS[i].b, outp,
                    BANKS[i].size / 1024 / 1024);
     }
     return built;
@@ -217,16 +362,17 @@ static void derive_version(const mm_opts *o, char out[32]) {
 /* Which raw DCS ROMs will the sounds stage use? (explicit override, else the
    real machine config: chips u109/u110 + the bundle's sf.rom). */
 void mm_resolve_dcs_roms(const mm_opts *o, char u109[1024], char u110[1024], char flash[1024]) {
-    char pbuf[64];
+    mm_chipset cs;
+    chipset_scan(o->roms_dir, o->chip_prefix, &cs);
     u109[0] = u110[0] = flash[0] = '\0';
     if (o->dcs_u109)
         snprintf(u109, 1024, "%s", o->dcs_u109);
-    else if (o->roms_dir)
-        find_chip(o->roms_dir, chip_prefix(o, pbuf, sizeof pbuf), "109", u109, 1024);
+    else
+        snprintf(u109, 1024, "%s", cs.path[109 - CHIP_LO]);
     if (o->dcs_u110)
         snprintf(u110, 1024, "%s", o->dcs_u110);
-    else if (o->roms_dir)
-        find_chip(o->roms_dir, chip_prefix(o, pbuf, sizeof pbuf), "110", u110, 1024);
+    else
+        snprintf(u110, 1024, "%s", cs.path[110 - CHIP_LO]);
     if (o->dcs_flash)
         snprintf(flash, 1024, "%s", o->dcs_flash);
     else if (o->bundle_dir) {
@@ -295,10 +441,8 @@ int mm_stage_prepare(const mm_opts *o, mm_ctx *c) {
         if (!o->roms_dir)
             mm_warn("no --roms: image banks not built (images/fonts will be empty)");
         else {
-            char pbuf[64];
-            const char *pfx = chip_prefix(o, pbuf, sizeof pbuf);
-            mm_log(1, "deinterleaving image banks from %s (chip prefix \"%s\")", o->roms_dir, pfx);
-            mm_deinterleave(o->roms_dir, c->banks_dir, pfx, o->verbose);
+            mm_log(1, "deinterleaving image banks from %s", o->roms_dir);
+            mm_deinterleave(o->roms_dir, c->banks_dir, o->chip_prefix, o->verbose);
         }
     } else {
         mm_log(1, "image banks present in %s — skipping deinterleave", c->banks_dir);

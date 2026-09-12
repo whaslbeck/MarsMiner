@@ -32,14 +32,19 @@ The code is MIT (`LICENSE`); the bundled MAME ADSP-2105 core is BSD-3-Clause. Se
 ## Inputs
 
 ```
---roms   DIR   paired mask-ROM chips:  <game>_u100..u110.{rom,bin}
+--roms   DIR   paired mask-ROM chips:  <game>_u100..u110.{rom,bin}  or  U100..U110.ROM
 --bundle DIR   flash update bundle:    pin2000_*_game/_sf/_symbols/_im_flsh0/_bootdata.rom
 ```
 
 The bundle supplies `game.rom` + `symbols.rom` (every stage needs them) and the DCS sound flash
 (`*_sf.rom`). The chips supply the image banks (u100–u107) and the raw DCS sample ROMs
-(u109/u110). The `<game>_` prefix is taken from whatever `*_u1NN.{rom,bin}` is in `--roms`;
-`--chip-prefix` overrides it.
+(u109/u110).
+
+Chip filenames resolve in both forms they come in: `<prefix>_uNNN.{rom,bin}` as the ROM sets
+use it, and the bare `UNNN.ROM` a chip reader writes — letter and extension in either case,
+nothing to rename or symlink. The prefix is taken from the files themselves; if a directory
+holds more than one set, the most complete one wins and the others are named in a warning, so
+`--chip-prefix` is only needed to override that choice.
 
 A dump that is only the chips has no bundle, and therefore no symbol table — see
 [chips-only dumps](#chips-only-dumps---scan-images) below.
@@ -133,7 +138,7 @@ the same board, point it at a consistent set:
 --all-sounds      decode every DCS id, not just the ones the game can play
 --used-ids F      allow-list override          (default: derived from the image)
 --names F         id->name CSV                 (optional; names the FLACs)
---chip-prefix P   the <prefix>_uNNN part of the chip filenames
+--chip-prefix P   pin the <prefix> in <prefix>_uNNN (default: read off the files)
 --dcs-u109/u110/flash F   raw DCS sample/flash ROMs
 --no-dcs-check    skip the flash/sample consistency probe
 -v, -vv           verbosity

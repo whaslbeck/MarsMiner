@@ -107,7 +107,8 @@ uint32_t mm_sym_addr(const mm_symtab *st, const char *name, int *found);
  * -------------------------------------------------------------------------- */
 typedef struct {
     const char *roms_dir;    /* dir of paired chip ROMs (u100..u110)     */
-    const char *chip_prefix; /* chip-filename prefix, e.g. "rfm" in rfm_u109.bin (NULL = auto) */
+    const char *chip_prefix; /* chip-filename prefix, e.g. "rfm" in rfm_u109.bin. NULL/"" =
+                                work it out from the directory; bare uNNN dumps have none */
     const char *bundle_dir;  /* update bundle (*_game/_sf/_symbols/...)  */
     const char *out_dir;     /* asset output root                        */
     const char *work_dir;    /* intermediates (banks/flash/symbols)      */
@@ -173,6 +174,8 @@ long mm_used_ids_derive(const mm_ctx *c, uint16_t *ids, size_t max, long *n_acls
 long mm_used_ids_write(const char *path, const uint16_t *ids, long n, const char *header);
 
 /* ROM prep primitives (1:1 with the Python tools) — exposed for prepare + tests */
+/* `prefix` pins the chip-filename prefix; NULL or "" resolves it from the directory, which
+   also covers prefix-less dumps ("U100.ROM" as a chip reader writes them). */
 int mm_deinterleave(const char *roms_dir, const char *out_dir, const char *prefix, int verbose);
 int mm_assemble_flash(const char *bundle_dir, mm_buf *out); /* fills *out (owned) */
 void mm_resolve_dcs_roms(const mm_opts *o, char u109[1024], char u110[1024], char flash[1024]);
