@@ -69,11 +69,15 @@ reads the pointer out of `game.rom` and follows it into the image ROMs. A dump t
 mask ROMs alone has neither file, so it extracts nothing — even though the image banks are
 intact and in the usual format.
 
-`--scan-images` finds the images without them. It walks the image window looking for the anim
-header's own shape (`nframes` at +0x00, `frames_ptr` at +0x1C, and a frame table of 0x18-byte
-descriptors carrying one of the six known codec ids, plausible dimensions, two zero reserved
-words and a mapped data pointer), and synthesises the pointer word and symbol each walker
-expects. The decoders themselves are untouched.
+`--scan-images` finds the graphics without them, by shape rather than by name, and synthesises
+the pointer word and symbol each walker expects. The decoders themselves are untouched. Three
+kinds are recognised:
+
+| | shape it is found by |
+|---|---|
+| anim | `nframes` at +0x00, `frames_ptr` at +0x1C, then 0x18-byte frame descriptors whose type is one of the six anim codecs, with plausible dimensions, two zero reserved words and a mapped data pointer |
+| movie | the same header and descriptors, but every type is `0x1e` and the dimensions obey the movie decoder: ≤ 1024×512, both multiples of 4, and equal to the header's own w/h |
+| font | glyph count at +0x00, character array at +0x14, then 0x1C-byte glyphs whose character codes **ascend**, with metrics inside the extractor's bounds and a bitmap of exactly w×h mapped bytes |
 
 Without `--bundle` this is the only mode that can work, so it turns itself on — a chips-only
 dump needs no flags beyond the directory:
@@ -86,15 +90,25 @@ dump needs no flags beyond the directory:
 sound flash lives in the bundle. (Name a stage in `--only` and it is never skipped: if you ask
 for `--only sounds` without a flash, the missing input is an error, which is what you want to
 hear.) **The output is addressed, not named** — a dump without a symbol table cannot give the
-names back, so images land in `images/scan_<addr>_<w>x<h>_<n>f_ptr/`. `messages` and
+names back, so output lands in `images/scan_<addr>_<w>x<h>_<n>f_ptr/`,
+`images/movie_scan_<addr>_…/` and `fonts/font_scan_<addr>_<n>g.{png,csv}`. `messages` and
 `adjustments` stay empty; they live in `game.rom`.
 
 How much the shape alone is worth is measurable, because RfM ships a symbol table that gives
-an independent answer. There the scan finds 482 structures: 475 are exactly the ones the
-`*_ptr` symbols reach (those are skipped as duplicates), and the remaining 7 are real images
-the shipped table simply does not name — the service-mode test pattern and switch-matrix
-grids. No false positives. So `--scan-images` is also useful *with* a bundle, as an addition:
-it picks up what no symbol points at.
+an independent answer. Over RfM's image banks the scan finds 513 structures — 482 anims, 20
+movies, 11 fonts — and 499 of them are exactly the ones the symbols reach (skipped as
+duplicates, so nothing is extracted twice). Recall is complete where it can be checked: all 20
+`movie_*_ptr` and all 4 image-ROM `font_*_data_ptr` are among them.
+
+The other 14 are real assets the shipped table does not name, and not one is a false positive:
+7 anims (the service-mode test pattern and the switch-matrix grids) and 7 fonts — which turn
+out to be the mask ROMs' own copies of the seven `font_system_*` fonts that the update flash
+supersedes. Three of those decode byte-identically to the flash version; the others are the
+pre-update artwork. So `--scan-images` earns its place alongside a bundle too: it picks up
+what no symbol points at.
+
+Only the image window is scanned, not the update flash — everything in the flash already has
+a symbol pointing at it, so there is nothing there for a scan to add.
 
 ## DCS audio: the ROM sets must match
 
@@ -133,8 +147,8 @@ the same board, point it at a consistent set:
 --force           rebuild even if outputs exist
 --loose           keep the loose tree next to the .zip
 --no-zip          loose tree only, no container
---scan-images     find the images by structure instead of by symbol. Implied when there
-                  is no --bundle; with one, it adds the images no symbol points at
+--scan-images     find anims, movies and fonts by structure instead of by symbol. Implied
+                  when there is no --bundle; with one, it adds what no symbol points at
 --all-sounds      decode every DCS id, not just the ones the game can play
 --used-ids F      allow-list override          (default: derived from the image)
 --names F         id->name CSV                 (optional; names the FLACs)
