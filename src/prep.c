@@ -277,10 +277,15 @@ int mm_stage_prepare(const mm_opts *o, mm_ctx *c) {
             mm_buf_free(&srom);
         }
     }
-    if (!c->game_rom.data)
-        mm_die("no game.rom (need --bundle with *_game.rom)");
-    if (!c->symtab.count)
-        mm_die("no symbols (need --bundle with *_symbols.rom)");
+    c->game_len = c->game_rom.len; /* the bundle's own extent; --scan-images appends past it */
+    /* Without a symbol table there is nothing to walk — unless --scan-images, which finds the
+       image structures by shape instead and supplies both below, once the banks are loaded. */
+    if (!o->scan_images) {
+        if (!c->game_rom.data)
+            mm_die("no game.rom (need --bundle with *_game.rom, or --scan-images)");
+        if (!c->symtab.count)
+            mm_die("no symbols (need --bundle with *_symbols.rom, or --scan-images)");
+    }
 
     /* Build image banks unless they already exist and not --force.
        Sized above banks_dir[] so the compiler can see the join always fits. */
@@ -308,5 +313,14 @@ int mm_stage_prepare(const mm_opts *o, mm_ctx *c) {
     /* Build the shared address space (banks + flash). */
     if (mm_aspace_init(&c->aspace, c->banks_dir, c->flash) != 0)
         mm_die("out of memory building address space");
+
+    /* Structural image scan — needs the address space, so it runs last. */
+    if (o->scan_images) {
+        long n = mm_scan_images(o, c);
+        if (n <= 0 && !c->symtab.count)
+            mm_die("--scan-images found no image structures in %s — is --roms pointing at the "
+                   "mask-ROM chips, and do their names match --chip-prefix?",
+                   o->roms_dir ? o->roms_dir : "(no --roms given)");
+    }
     return 0;
 }

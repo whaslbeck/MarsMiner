@@ -122,6 +122,7 @@ typedef struct {
     int no_dcs_check;        /* skip the DCS flash/sample consistency probe */
     int no_zip;              /* don't pack into a .zip (loose files only) */
     int keep_loose;          /* keep the loose asset tree alongside the .zip */
+    int scan_images;         /* find anims by shape, not by symbol (chips-only dumps) */
 } mm_opts;
 
 enum {
@@ -138,6 +139,9 @@ enum {
 /* Resolved intermediate inputs shared by the asset stages. */
 typedef struct {
     mm_buf game_rom;  /* game.rom (link base 0x100000)            */
+    size_t game_len;  /* bytes of it that came from the bundle — --scan-images appends its
+                         own pointer table past this, and stages that bound-check against
+                         "the end of the ROM" must use this, not game_rom.len          */
     mm_symtab symtab; /* parsed symbols                           */
     mm_aspace aspace; /* banks + flash                            */
     mm_buf flash;     /* assembled BAR3 flash (owns the bytes)    */
@@ -172,6 +176,12 @@ long mm_used_ids_write(const char *path, const uint16_t *ids, long n, const char
 int mm_deinterleave(const char *roms_dir, const char *out_dir, const char *prefix, int verbose);
 int mm_assemble_flash(const char *bundle_dir, mm_buf *out); /* fills *out (owned) */
 void mm_resolve_dcs_roms(const mm_opts *o, char u109[1024], char u110[1024], char flash[1024]);
+
+/* --scan-images (scan.c): find anim structures in the image banks by their shape and
+ * synthesise the game.rom pointer + `scan_*_ptr` symbol each walker expects, so a
+ * chips-only dump (no update bundle, hence no symbol table) still yields its graphics.
+ * Appends to c->game_rom and c->symtab; returns how many structures it added. */
+long mm_scan_images(const mm_opts *o, mm_ctx *c);
 
 /* asset decoders */
 long mm_render_anims(const mm_opts *o, mm_ctx *c, const char *out_images);

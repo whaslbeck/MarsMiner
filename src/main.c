@@ -49,6 +49,7 @@ static void usage(const char *prog) {
            "Inputs (from your own machine's ROMs):\n"
            "  --roms   DIR    paired mask-ROM chips  (rfm_u100..u110.{rom,bin})\n"
            "  --bundle DIR    flash update bundle    (pin2000_*_game/_sf/_symbols/...)\n"
+           "                  Without one there is no symbol table: see --scan-images.\n"
            "\n"
            "Output:\n"
            "  --out    DIR    asset output root      (default: assets)\n"
@@ -62,6 +63,10 @@ static void usage(const char *prog) {
            "  --force         rebuild even if outputs exist\n"
            "  --all-sounds    decode every DCS id, not just the game's used-id list\n"
            "  --no-dcs-check  skip the flash/sample consistency probe before decoding\n"
+           "  --scan-images   find the anims in the image banks by their structure instead of\n"
+           "                  from symbols, and name them by address. Makes --bundle optional,\n"
+           "                  so a chips-only dump still yields its graphics. Added to a run\n"
+           "                  that has a bundle, it picks up images no symbol points at.\n"
            "\n"
            "DCS overrides (else: chips u109/u110 + the bundle's sf.rom):\n"
            "  --dcs-u109 F  --dcs-u110 F  --dcs-flash F   raw DCS sample/flash ROMs\n"
@@ -114,6 +119,7 @@ int main(int argc, char **argv) {
     o.out_dir = "assets";
     o.work_dir = "work";
     o.steps = MM_STEP_ALL;
+    unsigned asked_for = 0; /* stages named in --only (see the skip rule below) */
 
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i];
@@ -132,6 +138,8 @@ int main(int argc, char **argv) {
             o.all_sounds = 1;
         else if (!strcmp(a, "--no-dcs-check"))
             o.no_dcs_check = 1;
+        else if (!strcmp(a, "--scan-images"))
+            o.scan_images = 1;
         else if (!strcmp(a, "--loose"))
             o.keep_loose = 1;
         else if (!strcmp(a, "--no-zip"))
@@ -160,6 +168,7 @@ int main(int argc, char **argv) {
                 if (!b)
                     mm_warn("unknown stage '%s'", t);
                 o.steps |= b;
+                asked_for |= b; /* named by the user: missing inputs are an error, not a skip */
             }
             free(list);
         } else if (!strcmp(a, "-h") || !strcmp(a, "--help")) {
@@ -175,12 +184,21 @@ int main(int argc, char **argv) {
         usage(argv[0]);
         return 2;
     }
-    if (!o.bundle_dir)
-        mm_die("--bundle is required (the update bundle holds game.rom + symbols.rom)");
+    /* No bundle means no game.rom and no symbol table, so the symbol-driven walk cannot start.
+       The structural image scan is then the only way in — turn it on rather than making the
+       user ask for the only mode that can work. */
+    if (!o.bundle_dir && !o.scan_images) {
+        if (!o.roms_dir)
+            mm_die("nothing to read: give --roms (chip dumps) and, if you have it, --bundle");
+        o.scan_images = 1;
+        mm_info("no --bundle: no symbol table, so images are found by structure (--scan-images)");
+    }
+    if (o.scan_images && !o.roms_dir)
+        mm_die("--scan-images needs --roms: the structures it looks for live in the image banks");
 
     mm_info("ReRfM-MarsMiner");
     mm_info("  roms   : %s", o.roms_dir ? o.roms_dir : "(none)");
-    mm_info("  bundle : %s", o.bundle_dir);
+    mm_info("  bundle : %s", o.bundle_dir ? o.bundle_dir : "(none — image scan only)");
     mm_info("  out    : %s", o.out_dir);
     if (mm_mkdir_p(o.out_dir) != 0)
         mm_die("cannot create --out %s", o.out_dir);
@@ -217,6 +235,20 @@ int main(int argc, char **argv) {
        produced nothing, or a script around this tool cannot tell the two apart. */
     long n_sounds = 0, n_images = 0, n_fonts = 0, n_messages = 0, n_tables = 0;
     int failed = 0;
+
+    /* The sounds stage needs the DCS set (u109/u110 + the sound flash); a chips-only dump has
+       no flash. Skipping it is right when it is only on because it is on by default — but if
+       --only named it, the missing input is what the user has to hear about, so let the stage
+       run and fail. */
+    if ((o.steps & MM_STEP_SOUNDS) && !(asked_for & MM_STEP_SOUNDS)) {
+        char su109[1024], su110[1024], sflash[1024];
+        mm_resolve_dcs_roms(&o, su109, su110, sflash);
+        if (!su109[0] || !su110[0] || !sflash[0]) {
+            mm_info("sounds: skipped — no DCS sound flash (needs --bundle's *_sf.rom, or "
+                    "--dcs-flash/--dcs-u109/--dcs-u110)");
+            o.steps &= ~MM_STEP_SOUNDS;
+        }
+    }
     if (o.steps & MM_STEP_SOUNDS)
         failed += ((n_sounds = mm_stage_sounds(&o, &c)) < 0);
     if (o.steps & MM_STEP_IMAGES)

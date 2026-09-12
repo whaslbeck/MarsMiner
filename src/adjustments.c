@@ -49,7 +49,9 @@ long mm_extract_adjustments(const mm_opts *o, mm_ctx *c, const char *out_csv) {
     (void)o;
     const mm_symtab *st = &c->symtab;
     const mm_buf *rom = &c->game_rom;
-    uint32_t end = (uint32_t)(MM_GBASE + rom->len);
+    /* The bundle's game.rom ends here. Not rom->len: --scan-images appends a pointer table
+       past it, which must not widen the address range this accepts. */
+    uint32_t end = (uint32_t)(MM_GBASE + (c->game_len ? c->game_len : rom->len));
 
     ent *adj = malloc(st->count * sizeof *adj);
     ent *dadj = malloc(st->count * sizeof *dadj);

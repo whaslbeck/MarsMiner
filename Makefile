@@ -30,7 +30,7 @@ BIN   := marsminer
 
 # --- sources -----------------------------------------------------------------
 C_SRC := src/util.c src/addrspace.c src/symbols.c src/prep.c \
-         src/assets_common.c src/png.c src/anims.c src/movies.c \
+         src/assets_common.c src/png.c src/anims.c src/movies.c src/scan.c \
          src/fonts.c src/messages.c src/adjustments.c src/tables.c src/used_ids.c \
          src/spectral.c src/zip.c src/main.c
 

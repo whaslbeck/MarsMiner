@@ -41,6 +41,9 @@ The bundle supplies `game.rom` + `symbols.rom` (every stage needs them) and the 
 (u109/u110). The `<game>_` prefix is taken from whatever `*_u1NN.{rom,bin}` is in `--roms`;
 `--chip-prefix` overrides it.
 
+A dump that is only the chips has no bundle, and therefore no symbol table — see
+[chips-only dumps](#chips-only-dumps---scan-images) below.
+
 ## What it extracts
 
 | Stage | Output |
@@ -53,6 +56,40 @@ The bundle supplies `game.rom` + `symbols.rom` (every stage needs them) and the 
 
 Before any of that, ROM prep runs in-process: the paired mask ROMs are deinterleaved into 16 MiB
 image banks, the update flash is assembled, and the symbol table is parsed.
+
+## Chips-only dumps: `--scan-images`
+
+Every stage is symbol-driven: it starts at a `*_ptr` symbol from the bundle's `symbols.rom`,
+reads the pointer out of `game.rom` and follows it into the image ROMs. A dump taken off the
+mask ROMs alone has neither file, so it extracts nothing — even though the image banks are
+intact and in the usual format.
+
+`--scan-images` finds the images without them. It walks the image window looking for the anim
+header's own shape (`nframes` at +0x00, `frames_ptr` at +0x1C, and a frame table of 0x18-byte
+descriptors carrying one of the six known codec ids, plausible dimensions, two zero reserved
+words and a mapped data pointer), and synthesises the pointer word and symbol each walker
+expects. The decoders themselves are untouched.
+
+Without `--bundle` this is the only mode that can work, so it turns itself on — a chips-only
+dump needs no flags beyond the directory:
+
+```sh
+./marsminer --roms <chipdir> --out assets -v
+```
+
+`sounds` is then skipped with a one-line notice rather than failing the run, since the DCS
+sound flash lives in the bundle. (Name a stage in `--only` and it is never skipped: if you ask
+for `--only sounds` without a flash, the missing input is an error, which is what you want to
+hear.) **The output is addressed, not named** — a dump without a symbol table cannot give the
+names back, so images land in `images/scan_<addr>_<w>x<h>_<n>f_ptr/`. `messages` and
+`adjustments` stay empty; they live in `game.rom`.
+
+How much the shape alone is worth is measurable, because RfM ships a symbol table that gives
+an independent answer. There the scan finds 482 structures: 475 are exactly the ones the
+`*_ptr` symbols reach (those are skipped as duplicates), and the remaining 7 are real images
+the shipped table simply does not name — the service-mode test pattern and switch-matrix
+grids. No false positives. So `--scan-images` is also useful *with* a bundle, as an addition:
+it picks up what no symbol points at.
 
 ## DCS audio: the ROM sets must match
 
@@ -91,6 +128,8 @@ the same board, point it at a consistent set:
 --force           rebuild even if outputs exist
 --loose           keep the loose tree next to the .zip
 --no-zip          loose tree only, no container
+--scan-images     find the images by structure instead of by symbol. Implied when there
+                  is no --bundle; with one, it adds the images no symbol points at
 --all-sounds      decode every DCS id, not just the ones the game can play
 --used-ids F      allow-list override          (default: derived from the image)
 --names F         id->name CSV                 (optional; names the FLACs)
