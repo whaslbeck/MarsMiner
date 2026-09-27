@@ -63,7 +63,10 @@ static int extract_one(const char *name, uint32_t ptr, mm_ctx *c, const char *ou
         uint32_t bmp = rd_u32le(hdr + 0x18);
         if (adv == 0)
             adv = (int32_t)(default_adv ? default_adv : 1);
-        if (!(w > 0 && w <= 64 && h > 0 && h <= 64))
+        /* a sanity bound, not a glyph size: serp_33's M and W are wider than 64 px, and the
+           old 64 x 64 bound (carried over from the Python extractor) dropped them silently —
+           "SHOOT RAMP" came out as "SHOOT RAP". */
+        if (!(w > 0 && w <= 256 && h > 0 && h <= 256))
             continue;
         const uint8_t *px = mm_rd_bytes(grom, as, bmp, (size_t)w * h);
         if (!px)
