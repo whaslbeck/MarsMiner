@@ -124,6 +124,7 @@ typedef struct {
     int no_zip;              /* don't pack into a .zip (loose files only) */
     int keep_loose;          /* keep the loose asset tree alongside the .zip */
     int scan_images;         /* find anims by shape, not by symbol (chips-only dumps) */
+    const char *dumps;       /* --dump: "SYM:LEN[,SYM:LEN...]" raw data -> tables/rom/SYM.bin */
 } mm_opts;
 
 enum {

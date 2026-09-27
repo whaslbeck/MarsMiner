@@ -76,6 +76,9 @@ static void usage(const char *prog) {
            "  --used-ids F    sound-id allow-list override (default: derive it from the ROM's\n"
            "                  own acl tables at extract time — no static list needed)\n"
            "  --names   F     id->name CSV          (optional)\n"
+           "  --dump    LIST  SYM:LEN[,SYM:LEN...] copy LEN raw bytes at symbol SYM to\n"
+           "                  tables/rom/SYM.bin (tables stage) — for data tables a title's\n"
+           "                  engine reads as-is; the caller names them, not MarsMiner\n"
            "\n"
            "Reporting:\n"
            "  -v, -vv         more verbose\n"
@@ -153,6 +156,8 @@ int main(int argc, char **argv) {
             o.dcs_flash = NEXT();
         else if (!strcmp(a, "--used-ids"))
             o.used_ids = NEXT();
+        else if (!strcmp(a, "--dump"))
+            o.dumps = NEXT();
         else if (!strcmp(a, "--names"))
             o.sound_names = NEXT();
         else if (!strcmp(a, "--chip-prefix"))

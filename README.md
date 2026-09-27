@@ -152,6 +152,9 @@ the same board, point it at a consistent set:
 --all-sounds      decode every DCS id, not just the ones the game can play
 --used-ids F      allow-list override          (default: derived from the image)
 --names F         id->name CSV                 (optional; names the FLACs)
+--dump LIST       SYM:LEN[,SYM:LEN...] — copy LEN raw bytes at symbol SYM to
+                  tables/rom/SYM.bin (tables stage), for data tables an engine reads
+                  as-is. The caller names them; MarsMiner knows no title.
 --chip-prefix P   pin the <prefix> in <prefix>_uNNN (default: read off the files)
 --dcs-u109/u110/flash F   raw DCS sample/flash ROMs
 --no-dcs-check    skip the flash/sample consistency probe
