@@ -57,7 +57,16 @@ A dump that is only the chips has no bundle, and therefore no symbol table — s
 | `images` | `images/<name>/frameNNN.png` — animations and the delta-coded movie sequences |
 | `fonts` | `fonts/font_*.png` + `*.csv` — glyph atlas plus per-glyph metrics |
 | `messages` | `tables/messages.csv` — the ROM's message strings |
-| `tables` | `tables/symbols.csv`, `adjustments.csv` |
+| `tables` | `tables/symbols.csv`, `adjustments.csv`, `adjustment_enums.csv` — the operator adjustments, see below |
+
+The adjustments are found by their symbols, not by a name prefix: a Pinball 2000 adjustment
+`X` is the triple `_X` (the factory value), `_d_X` (the descriptor: min, max, step, value
+words) and `X_enode` (the ResourceManager node: the label in four languages, the
+category-mask bit and the rank the operator menu sorts by). `adjustments.csv` carries all of
+that — `adjustment,default,min,max,step,width_bits,category,rank,label_en,label_de,label_fr,
+label_es` — and `adjustment_enums.csv` the words a value prints as (`adjustment,value,en,de,
+fr,es`) wherever the descriptor lists them in the ROM. A list the game assembles at boot is
+zeros in the file, and so absent here; that is the game's own business.
 
 Before any of that, ROM prep runs in-process: the paired mask ROMs are deinterleaved into 16 MiB
 image banks, the update flash is assembled, and the symbol table is parsed.

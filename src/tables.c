@@ -2,7 +2,7 @@
 /* tables.c — collect the id/name/index tables the engine needs, into tables/.
  * 1:1 with extract.py:step_tables:
  *   - symbols.csv         (from the parsed symbol table)
- *   - adjustments.csv     (extract_adjustments, ROM-derived)
+ *   - adjustments.csv, adjustment_enums.csv (extract_adjustments, ROM-derived)
  *   - copy the canonical pre-derived tables that live in work/ if present
  *     (anim_index.csv, dcs_sound_commands.csv->sound_commands.csv,
  *      switch_numbers.json) — exactly as extract.py copies them from WORK.
@@ -70,11 +70,13 @@ long mm_stage_tables(const mm_opts *o, mm_ctx *c) {
         mm_log(1, "  tables: symbols.csv");
     }
 
-    /* adjustments.csv (ROM-derived) */
+    /* adjustments.csv + adjustment_enums.csv (ROM-derived) */
     snprintf(dst, sizeof dst, "%s/adjustments.csv", dir);
-    long adj = mm_extract_adjustments(o, c, dst);
+    char enums[1200];
+    snprintf(enums, sizeof enums, "%s/adjustment_enums.csv", dir);
+    long adj = mm_extract_adjustments(o, c, dst, enums);
     if (adj >= 0) {
-        n++;
+        n += 2;
         mm_log(1, "  tables: adjustments.csv (%ld rows)", adj);
     }
 

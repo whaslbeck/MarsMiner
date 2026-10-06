@@ -192,7 +192,10 @@ long mm_render_anims(const mm_opts *o, mm_ctx *c, const char *out_images);
 long mm_render_movies(const mm_opts *o, mm_ctx *c, const char *out_images);
 long mm_extract_fonts(const mm_opts *o, mm_ctx *c, const char *out_fonts);
 long mm_extract_messages(const mm_opts *o, mm_ctx *c, const char *out_csv);
-long mm_extract_adjustments(const mm_opts *o, mm_ctx *c, const char *out_csv);
+/* adjustments.csv (and, with out_enums_csv, adjustment_enums.csv) from the X_enode /
+   _X / _d_X symbol triples -- see adjustments.c. Returns the row count, -1 on error. */
+long mm_extract_adjustments(const mm_opts *o, mm_ctx *c, const char *out_csv,
+                            const char *out_enums_csv);
 
 /* --------------------------------------------------------------------------
  *  version identification
